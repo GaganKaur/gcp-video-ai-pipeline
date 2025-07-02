@@ -1,0 +1,18 @@
+# backend/requirements.txt
+
+Flask
+gunicorn
+
+# Core SDKs needed
+google-cloud-aiplatform  # Needed for vector_search_util's MatchingEngineIndexEndpoint
+google-genai             # The modern SDK we will use for all GenAI calls
+
+# Other dependencies
+google-cloud-bigquery
+google-cloud-bigquery-storage
+google-cloud-storage
+google-cloud-videointelligence
+google-auth
+google-auth-httplib2
+google-auth-oauthlib
+numpy

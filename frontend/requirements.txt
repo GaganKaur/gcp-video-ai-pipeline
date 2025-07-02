@@ -1,0 +1,28 @@
+
+
+# Core UI framework
+streamlit
+
+# Data manipulation and numerical operations
+pandas
+numpy
+
+# --- Google Cloud Libraries ---
+
+google-genai
+
+
+google-cloud-aiplatform
+
+# For querying BigQuery to fetch metadata
+google-cloud-bigquery
+google-cloud-bigquery-storage
+
+# For generating signed URLs for video playback
+google-cloud-storage
+
+# Core authentication libraries used by all GCP clients
+google-auth
+google-auth-httplib2
+
+db-dtypes
