@@ -15,6 +15,56 @@ def init_vertex_ai():
         vertexai.init(project=GCP_PROJECT, location=GCP_LOCATION)
         _is_vertex_initialized = True
 
+def identify_memorable_moments(project_id, location, gcs_uri: str, video_duration: float):
+    """
+    Uses Gemini multimodal to identify 3-5 highlight moments in a video.
+    Returns a list of dicts with label, reason, start_sec, end_sec.
+    """
+    try:
+        init_vertex_ai()
+        model = GenerativeModel("gemini-2.5-pro")
+
+        moment_schema = {
+            "type": "ARRAY", "items": {"type": "OBJECT",
+                "properties": {
+                    "label":     {"type": "STRING"},
+                    "reason":    {"type": "STRING"},
+                    "start_sec": {"type": "NUMBER"},
+                    "end_sec":   {"type": "NUMBER"},
+                }, "required": ["label", "reason", "start_sec", "end_sec"]
+            }
+        }
+
+        prompt = f"""You are analyzing a video that is {video_duration:.0f} seconds long.
+Identify between 3 and 5 memorable highlight moments — moments that are emotionally resonant,
+visually striking, or represent a key narrative turn worth rewatching.
+Each moment should span 5–8 seconds.
+
+For each moment return:
+- label: a short descriptive title (e.g. "Surprise product reveal")
+- reason: one sentence explaining why this moment stands out
+- start_sec / end_sec: timestamps in seconds
+
+Return only moments where something genuinely notable happens. Spread them across the video."""
+
+        print(f"Identifying memorable moments in: {gcs_uri}")
+        response = model.generate_content(
+            [Part.from_uri(gcs_uri, mime_type="video/mp4"), Part.from_text(prompt)],
+            generation_config=GenerationConfig(
+                temperature=0.3,
+                response_mime_type="application/json",
+                response_schema=moment_schema,
+            )
+        )
+        moments = json.loads(response.text)
+        print(f"Identified {len(moments)} memorable moments.")
+        return moments
+    except Exception as e:
+        print(f"ERROR identifying memorable moments: {e}")
+        import traceback; traceback.print_exc()
+        return []
+
+
 def generate_consolidated_chapters(project_id, location, full_transcript_with_timestamps: str):
     """
     Uses the stable vertexai SDK to generate consolidated chapters.

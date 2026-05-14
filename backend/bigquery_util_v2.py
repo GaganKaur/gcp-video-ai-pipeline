@@ -63,6 +63,20 @@ def save_transcript_words(project_id, dataset_id, table_id, words_data):
     
     print("Finished inserting all word data.")
 
+def save_moments_to_bigquery(project_id, dataset_id, table_id, moments_data):
+    """Saves memorable moment data to BigQuery."""
+    client = bigquery.Client(project=project_id)
+    full_table_id = f"{project_id}.{dataset_id}.{table_id}"
+    try:
+        errors = client.insert_rows_json(full_table_id, moments_data)
+        if not errors:
+            print(f"Successfully inserted {len(moments_data)} moments into {full_table_id}")
+        else:
+            print(f"Errors inserting moments: {errors}")
+    except Exception as e:
+        print(f"BigQuery error saving moments: {e}")
+
+
 def save_chunks_to_bigquery(project_id, dataset_id, table_id, chunks_data):
     """Saves chunk data to the specified BigQuery table in batches."""
     client = bigquery.Client(project=project_id)

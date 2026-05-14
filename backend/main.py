@@ -5,8 +5,8 @@ import re
 from flask import Flask, request
 
 from video_intelligence_util_v2 import transcribe_video
-from gemini_util_v2 import generate_consolidated_chapters  
-from bigquery_util_v2 import delete_existing_chapters, save_chapters_to_bigquery, save_chunks_to_bigquery, save_transcript_words
+from gemini_util_v2 import generate_consolidated_chapters, identify_memorable_moments
+from bigquery_util_v2 import delete_existing_chapters, save_chapters_to_bigquery, save_chunks_to_bigquery, save_transcript_words, save_moments_to_bigquery
 from embedding_util_v2 import generate_embeddings_batch
 from vector_search_util import upsert_data_to_vector_search
 from google.cloud import storage
@@ -21,6 +21,7 @@ BIGQUERY_DATASET = os.environ.get("BIGQUERY_DATASET")
 CHAPTERS_TABLE_V2 = os.environ.get("CHAPTERS_TABLE_V2", "video_chapters_v2")
 CHUNKS_TABLE_V2 = os.environ.get("CHUNKS_TABLE_V2", "video_chunks_v2")
 WORDS_TABLE_V2 = os.environ.get("WORDS_TABLE_V2", "video_transcript_words_v2")
+MOMENTS_TABLE_V2 = os.environ.get("MOMENTS_TABLE_V2", "video_moments_v2")
 
 # --- File Handling Functions ---
 def sanitize_filename(filename: str):
@@ -128,10 +129,27 @@ def _run_processing_pipeline_v2(event):
                             })
         
 
-        print("Step 5/5: Saving all generated data...")
+        print("Step 5/6: Identifying memorable moments...")
+        delete_existing_chapters(GCP_PROJECT, BIGQUERY_DATASET, MOMENTS_TABLE_V2, final_uri)
+        video_duration = max((w.get('end_time_seconds', 0) for w in transcript_words), default=0)
+        moments = identify_memorable_moments(GCP_PROJECT, GCP_LOCATION, source_gcs_uri, video_duration)
+        moments_for_bq = [
+            {
+                "source_video_uri": final_uri,
+                "moment_id": f"{final_uri}|moment|{i}",
+                "label": m.get('label', f"Moment {i + 1}"),
+                "reason": m.get('reason', ''),
+                "start_time_seconds": float(m.get('start_sec', 0)),
+                "end_time_seconds": float(m.get('end_sec', 10)),
+            }
+            for i, m in enumerate(moments)
+        ]
+
+        print("Step 6/6: Saving all generated data...")
         if chapters_for_bq: save_chapters_to_bigquery(GCP_PROJECT, BIGQUERY_DATASET, CHAPTERS_TABLE_V2, chapters_for_bq)
         if chunks_for_bq: save_chunks_to_bigquery(GCP_PROJECT, BIGQUERY_DATASET, CHUNKS_TABLE_V2, chunks_for_bq)
         if vector_search_datapoints: upsert_data_to_vector_search(vector_search_datapoints)
+        if moments_for_bq: save_moments_to_bigquery(GCP_PROJECT, BIGQUERY_DATASET, MOMENTS_TABLE_V2, moments_for_bq)
 
         print("Pipeline successful. Archiving file.")
         archive_processed_file(processing_blob)
