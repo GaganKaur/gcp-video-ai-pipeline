@@ -51,11 +51,16 @@ def get_signed_video_url(gcs_uri: str):
         storage_client = storage.Client(credentials=creds)
         bucket_name, blob_name = gcs_uri.replace("gs://", "").split("/", 1)
         blob = storage_client.bucket(bucket_name).blob(blob_name)
+        # Service account creds (Cloud Run) have this attribute; user ADC creds don't.
+        sa_email = getattr(creds, 'service_account_email', None) or os.environ.get("SIGNING_SERVICE_ACCOUNT")
+        if not sa_email:
+            st.warning("Set the SIGNING_SERVICE_ACCOUNT env var to your service account email to enable video preview when running locally.")
+            return None
         url = blob.generate_signed_url(
             version="v4",
             expiration=timedelta(hours=1),
             method="GET",
-            service_account_email=creds.service_account_email,
+            service_account_email=sa_email,
             access_token=creds.token
         )
         return url
@@ -91,7 +96,7 @@ if client:
                     st.stop()
 
                 # Step 2: Find the nearest neighbors (most similar chunks) in Vector Search
-                potential_neighbors = find_neighbors(query_embedding, num_neighbors=4)
+                potential_neighbors = find_neighbors(query_embedding, num_neighbors=5)
             
                 if not potential_neighbors:
                     st.warning("No relevant moments found.")
@@ -139,8 +144,9 @@ if client:
                 search_results_df = client.query(query, job_config=job_config).to_dataframe()
 
                 # Preserve the relevance order returned by Vector Search
-                search_results_df['chunk_id'] = pd.Categorical(search_results_df['chunk_id'], categories=matched_chunk_ids, ordered=True)
-                search_results_df = search_results_df.sort_values('chunk_id')
+                search_results_df = search_results_df.assign(
+                    chunk_id=lambda df: pd.Categorical(df['chunk_id'], categories=matched_chunk_ids, ordered=True)
+                ).sort_values('chunk_id')
 
                 st.success(f"Found {len(search_results_df)} relevant passages for '{search_query}'")
 
@@ -203,6 +209,6 @@ if client:
                 job_config = bigquery.QueryJobConfig(query_parameters=[bigquery.ScalarQueryParameter("video_uri", "STRING", selected_video_uri)])
                 try:
                     browse_results_df = client.query(browse_query, job_config=job_config).to_dataframe()
-                    st.dataframe(browse_results_df, use_container_width=True, hide_index=True)
+                    st.dataframe(browse_results_df, width='stretch', hide_index=True)
                 except Exception as e:
                     st.error(f"Failed to fetch chapters: {e}")
