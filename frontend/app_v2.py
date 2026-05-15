@@ -107,12 +107,12 @@ if client:
                         st.error("Could not generate an embedding for the search query.")
                         st.stop()
 
-                    potential_neighbors = find_neighbors(query_embedding, num_neighbors=5)
+                    potential_neighbors = find_neighbors(query_embedding, num_neighbors=10)
                     if not potential_neighbors:
                         st.warning("No relevant moments found.")
                         st.stop()
 
-                    RELEVANCE_THRESHOLD = 0.75
+                    RELEVANCE_THRESHOLD = 0.35
                     good_neighbors = [n for n in potential_neighbors if n.distance <= RELEVANCE_THRESHOLD]
                     matched_chunk_ids = [n.id for n in good_neighbors]
 
@@ -122,15 +122,9 @@ if client:
                             chunks.source_video_uri,
                             chunks.chapter_number,
                             chunks.chunk_text AS matched_chunk,
+                            chunks.chunk_start_time_seconds AS chunk_start_time,
                             chapters.title,
-                            chapters.start_time_seconds AS chapter_start_time,
-                            (SELECT MIN(w.start_time_seconds)
-                             FROM `{BIGQUERY_WORDS_TABLE_V2}` w
-                             WHERE w.source_video_uri = chunks.source_video_uri
-                               AND STRPOS(chunks.chunk_text, w.word) = 1
-                               AND w.start_time_seconds >= chapters.start_time_seconds
-                               AND w.start_time_seconds < chapters.end_time_seconds
-                            ) as chunk_start_time
+                            chapters.start_time_seconds AS chapter_start_time
                         FROM `{BIGQUERY_CHUNKS_TABLE_V2}` AS chunks
                         JOIN `{BIGQUERY_CHAPTERS_TABLE_V2}` AS chapters
                           ON chunks.source_video_uri = chapters.source_video_uri
@@ -141,9 +135,18 @@ if client:
                         query_parameters=[bigquery.ArrayQueryParameter("chunk_ids", "STRING", matched_chunk_ids)]
                     )
                     search_results_df = client.query(bq_query, job_config=job_config).to_dataframe()
+
+                    # Re-rank: results containing all query terms surface first,
+                    # then partial matches, preserving vector distance order within each tier.
+                    query_terms = [t.lower() for t in search_query.split() if len(t) > 2]
+                    def keyword_score(text):
+                        text_lower = text.lower()
+                        return sum(1 for t in query_terms if t in text_lower)
+
                     search_results_df = search_results_df.assign(
-                        chunk_id=lambda df: pd.Categorical(df['chunk_id'], categories=matched_chunk_ids, ordered=True)
-                    ).sort_values('chunk_id')
+                        chunk_id=lambda df: pd.Categorical(df['chunk_id'], categories=matched_chunk_ids, ordered=True),
+                        keyword_score=lambda df: df['matched_chunk'].apply(keyword_score)
+                    ).sort_values(['keyword_score', 'chunk_id'], ascending=[False, True])
 
                     st.success(f"Found {len(search_results_df)} relevant passages for '{search_query}'")
 

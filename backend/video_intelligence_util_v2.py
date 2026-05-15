@@ -28,7 +28,7 @@ def transcribe_video(gcs_uri: str):
         operation = client.annotate_video(request=request)
 
         print("Waiting for transcription to complete (this can take several minutes)...")
-        response = operation.result(timeout=1800) # 30 minute timeout
+        response = operation.result(timeout=3600) # 60 minute timeout
         print("Transcription complete.")
 
         full_transcript = ""

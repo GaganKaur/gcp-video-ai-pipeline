@@ -35,8 +35,9 @@ def identify_memorable_moments(project_id, location, gcs_uri: str, video_duratio
             }
         }
 
+        max_moments = 5 if video_duration < 1800 else 8  # more highlights for videos over 30 min
         prompt = f"""You are analyzing a video that is {video_duration:.0f} seconds long.
-Identify between 3 and 5 memorable highlight moments — moments that are emotionally resonant,
+Identify between 3 and {max_moments} memorable highlight moments — moments that are emotionally resonant,
 visually striking, or represent a key narrative turn worth rewatching.
 Each moment should span 5–8 seconds.
 
@@ -45,7 +46,7 @@ For each moment return:
 - reason: one sentence explaining why this moment stands out
 - start_sec / end_sec: timestamps in seconds
 
-Return only moments where something genuinely notable happens. Spread them across the video."""
+Return only moments where something genuinely notable happens. Spread them evenly across the full video duration."""
 
         print(f"Identifying memorable moments in: {gcs_uri}")
         response = model.generate_content(

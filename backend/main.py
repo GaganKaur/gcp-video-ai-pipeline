@@ -108,21 +108,28 @@ def _run_processing_pipeline_v2(event):
                 "start_time_seconds": float(start_time), "end_time_seconds": float(end_time)
             })
 
-            chapter_words = [w['word'] for w in transcript_words if start_time <= w.get('start_time_seconds', float('inf')) < end_time]
-            chapter_text = " ".join(chapter_words)
-            if not chapter_text.strip(): continue
+            chapter_word_objects = [w for w in transcript_words if start_time <= w.get('start_time_seconds', float('inf')) < end_time]
+            if not chapter_word_objects: continue
 
-            words_in_chapter = chapter_text.split()
-            CHUNK_SIZE, CHUNK_OVERLAP = 50, 10
-            text_chunks = [" ".join(words_in_chapter[i:i+CHUNK_SIZE]) for i in range(0, len(words_in_chapter), CHUNK_SIZE - CHUNK_OVERLAP)]
-            
+            CHUNK_SIZE, CHUNK_OVERLAP = 150, 25
+            chunk_groups = [chapter_word_objects[k:k+CHUNK_SIZE] for k in range(0, len(chapter_word_objects), CHUNK_SIZE - CHUNK_OVERLAP)]
+            text_chunks = [" ".join(w['word'] for w in group) for group in chunk_groups]
+
             if text_chunks:
                 chunk_embeddings = generate_embeddings_batch(text_chunks)
                 if chunk_embeddings:
-                    for j, chunk in enumerate(text_chunks):
+                    for j, (chunk, group) in enumerate(zip(text_chunks, chunk_groups)):
                         if j < len(chunk_embeddings) and chunk_embeddings[j]:
                             chunk_id = f"{final_uri}|{i + 1}|{j + 1}"
-                            chunks_for_bq.append({"chunk_id": chunk_id, "source_video_uri": final_uri, "chapter_number": i + 1, "chunk_number": j + 1, "chunk_text": chunk})
+                            chunks_for_bq.append({
+                                "chunk_id": chunk_id,
+                                "source_video_uri": final_uri,
+                                "chapter_number": i + 1,
+                                "chunk_number": j + 1,
+                                "chunk_text": chunk,
+                                "chunk_start_time_seconds": group[0].get('start_time_seconds', 0),
+                                "chunk_end_time_seconds": group[-1].get('end_time_seconds', 0),
+                            })
                             vector_search_datapoints.append({
                                 "datapoint_id": chunk_id,
                                 "feature_vector": chunk_embeddings[j]
